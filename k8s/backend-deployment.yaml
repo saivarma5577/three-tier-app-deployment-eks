@@ -15,6 +15,8 @@ spec:
       containers:
       - name: backend
         image: 058264258551.dkr.ecr.ap-south-1.amazonaws.com/three-tier-backend:latest
-        imagePullPolicy: Always
         ports:
         - containerPort: 5001
+        env:
+        - name: MONGODB_URI
+          value: "mongodb://mongodb-service:27017/itemlist"
