@@ -42,28 +42,29 @@ pipeline {
                 }
             }
         }
+
         stage('Build and Push Docker Images') {
-    steps {
-        script {
-            withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
-                sh """
-                # Login to ECR
-                aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+            steps {
+                script {
+                    withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
+                        sh """
+                        # Login to ECR
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
 
-                # Build and push backend image
-                docker build -t three-tier-backend:latest ./backend
-                docker tag three-tier-backend:latest 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/three-tier-backend:latest
-                docker push 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/three-tier-backend:latest
+                        # Build and push backend image
+                        docker build -t three-tier-backend:latest ./backend
+                        docker tag three-tier-backend:latest 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/three-tier-backend:latest
+                        docker push 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/three-tier-backend:latest
 
-                # Build and push frontend image
-                docker build -t three-tier-frontend:latest ./frontend
-                docker tag three-tier-frontend:latest 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/three-tier-frontend:latest
-                docker push 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/three-tier-frontend:latest
-                """
+                        # Build and push frontend image
+                        docker build -t three-tier-frontend:latest ./frontend
+                        docker tag three-tier-frontend:latest 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/three-tier-frontend:latest
+                        docker push 058264258551.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/three-tier-frontend:latest
+                        """
+                    }
+                }
             }
         }
-    }
-}
 
         stage('Deploy Application') {
             steps {
@@ -82,13 +83,26 @@ pipeline {
             }
         }
 
+        stage('Wait for Pods') {
+            steps {
+                script {
+                    withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
+                        sh """
+                        kubectl --kubeconfig=${KUBECONFIG} wait --for=condition=Ready pods --all --timeout=300s
+                        """
+                    }
+                }
+            }
+        }
+
         stage('Verify Deployment') {
             steps {
                 script {
                     withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
                         sh """
-                        kubectl --kubeconfig=${KUBECONFIG} get pods
-                        kubectl --kubeconfig=${KUBECONFIG} get services
+                        kubectl --kubeconfig=${KUBECONFIG} get pods -o wide
+                        kubectl --kubeconfig=${KUBECONFIG} get services -o wide
+                        kubectl --kubeconfig=${KUBECONFIG} get deployments -o wide
                         """
                     }
                 }
