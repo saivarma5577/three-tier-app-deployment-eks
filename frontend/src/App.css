@@ -1,0 +1,20 @@
+.App {
+  text-align: center;
+}
+
+form {
+  margin: 20px;
+}
+
+input,
+textarea {
+  display: block;
+  margin: 10px auto;
+  padding: 8px;
+  width: 300px;
+}
+
+button {
+  padding: 10px 20px;
+}
+
