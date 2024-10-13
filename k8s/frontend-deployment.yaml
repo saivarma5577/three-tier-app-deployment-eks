@@ -15,6 +15,8 @@ spec:
       containers:
       - name: frontend
         image: 058264258551.dkr.ecr.ap-south-1.amazonaws.com/three-tier-frontend:latest
-        imagePullPolicy: Always
         ports:
         - containerPort: 3000
+        env:
+        - name: REACT_APP_API_URL
+          value: "http://backend-service:5001"
