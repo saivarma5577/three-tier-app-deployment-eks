@@ -8,13 +8,26 @@ pipeline {
     }
 
     stages {
+        stage('Setup kubectl') {
+            steps {
+                script {
+                    withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
+                        sh """
+                        aws eks get-token --cluster-name ${CLUSTER_NAME} > /dev/null 2>&1 || eksctl create cluster --name=${CLUSTER_NAME} --region=${AWS_DEFAULT_REGION} --nodes=2 --node-type=t3.medium
+                        aws eks update-kubeconfig --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG}
+                        kubectl --kubeconfig=${KUBECONFIG} get nodes
+                        """
+                    }
+                }
+            }
+        }
+
         stage('Cleanup') {
             steps {
                 script {
                     try {
                         withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
                             sh """
-                            aws eks get-token --cluster-name ${CLUSTER_NAME} | kubectl --kubeconfig=${KUBECONFIG} apply -f -
                             kubectl --kubeconfig=${KUBECONFIG} delete deployment --all
                             kubectl --kubeconfig=${KUBECONFIG} get services | grep -v kubernetes | awk '{print \$1}' | xargs kubectl --kubeconfig=${KUBECONFIG} delete service
                             kubectl --kubeconfig=${KUBECONFIG} delete pod --all
@@ -25,32 +38,6 @@ pipeline {
                         }
                     } catch (Exception e) {
                         echo "Cleanup failed, but continuing: ${e.getMessage()}"
-                    }
-                }
-            }
-        }
-
-        stage('Create/Update EKS Cluster') {
-            steps {
-                script {
-                    withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
-                        sh """
-                        eksctl create cluster --name=${CLUSTER_NAME} --region=${AWS_DEFAULT_REGION} --nodes=2 --node-type=t3.medium || true
-                        aws eks get-token --cluster-name ${CLUSTER_NAME} | kubectl --kubeconfig=${KUBECONFIG} apply -f -
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Configure kubectl') {
-            steps {
-                script {
-                    withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
-                        sh """
-                        aws eks update-kubeconfig --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG}
-                        kubectl --kubeconfig=${KUBECONFIG} get nodes
-                        """
                     }
                 }
             }
