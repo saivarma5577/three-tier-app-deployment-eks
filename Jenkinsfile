@@ -22,6 +22,44 @@ pipeline {
             }
         }
 
+        stage('Update Node Group') {
+            steps {
+                script {
+                    withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
+                        sh """
+                        # Get the current node group name
+                        NODE_GROUP=\$(aws eks list-nodegroups --cluster-name ${CLUSTER_NAME} --query 'nodegroups[0]' --output text)
+
+                        # Update existing node group
+                        aws eks update-nodegroup-config --cluster-name ${CLUSTER_NAME} \
+                            --nodegroup-name \$NODE_GROUP \
+                            --scaling-config minSize=2,maxSize=3,desiredSize=2
+
+                        # Wait for the node group update to complete
+                        aws eks wait nodegroup-active --cluster-name ${CLUSTER_NAME} --nodegroup-name \$NODE_GROUP
+
+                        # Cordon and drain old nodes
+                        OLD_NODES=\$(kubectl --kubeconfig=${KUBECONFIG} get nodes -o jsonpath='{.items[*].metadata.name}')
+                        for NODE in \$OLD_NODES
+                        do
+                            kubectl --kubeconfig=${KUBECONFIG} cordon \$NODE
+                            kubectl --kubeconfig=${KUBECONFIG} drain \$NODE --ignore-daemonsets --delete-emptydir-data --force --timeout=60s
+                        done
+
+                        # Delete old nodes
+                        for NODE in \$OLD_NODES
+                        do
+                            kubectl --kubeconfig=${KUBECONFIG} delete node \$NODE
+                        done
+
+                        # Verify new nodes
+                        kubectl --kubeconfig=${KUBECONFIG} get nodes
+                        """
+                    }
+                }
+            }
+        }
+
         stage('Cleanup') {
             steps {
                 script {
@@ -77,6 +115,10 @@ pipeline {
                         kubectl --kubeconfig=${KUBECONFIG} apply -f k8s/mongodb-service.yaml
                         kubectl --kubeconfig=${KUBECONFIG} apply -f k8s/backend-service.yaml
                         kubectl --kubeconfig=${KUBECONFIG} apply -f k8s/frontend-service.yaml
+                        
+                        # Force new deployments
+                        kubectl --kubeconfig=${KUBECONFIG} rollout restart deployment backend
+                        kubectl --kubeconfig=${KUBECONFIG} rollout restart deployment frontend
                         """
                     }
                 }
