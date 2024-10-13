@@ -1,19 +1,20 @@
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: backend
-   spec:
-     replicas: 3
-     selector:
-       matchLabels:
-         app: backend
-     template:
-       metadata:
-         labels:
-           app: backend
-       spec:
-         containers:
-         - name: backend
-           image: BACKEND_IMAGE
-           ports:
-           - containerPort: 5001
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: 058264258551.dkr.ecr.ap-south-1.amazonaws.com/three-tier-backend:latest
+        ports:
+        - containerPort: 5001
+      imagePullPolicy: Always
