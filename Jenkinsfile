@@ -8,6 +8,7 @@ pipeline {
         BACKEND_REPO_NAME="three-tier-backend"
         IMAGE_TAG="${BUILD_NUMBER}"
         CLUSTER_NAME="my-cluster"
+        KUBECTL="/usr/local/bin/kubectl"
     }
    
     stages {
@@ -50,7 +51,7 @@ pipeline {
                     ls -l $HOME/.kube/config || echo "Kubeconfig not found"
                     
                     echo "Checking kubectl executable:"
-                    which kubectl || echo "kubectl not found in PATH"
+                    which ${KUBECTL} || echo "kubectl not found in PATH"
                     
                     echo "Checking AWS CLI executable:"
                     which aws || echo "AWS CLI not found in PATH"
@@ -69,42 +70,62 @@ pipeline {
                             ls -la
                             
                             echo "Kubectl version:"
-                            kubectl version --client || echo "Failed to get kubectl version"
+                            ${KUBECTL} version --client || echo "Failed to get kubectl version"
                             
                             echo "Updating kubeconfig:"
                             aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${AWS_DEFAULT_REGION} || echo "Failed to update kubeconfig"
                             
                             echo "Kubectl config view:"
-                            kubectl config view --raw || echo "Failed to view kubectl config"
+                            ${KUBECTL} config view --raw || echo "Failed to view kubectl config"
                             
                             echo "Kubectl get nodes:"
-                            kubectl get nodes || echo "Failed to get nodes"
+                            ${KUBECTL} get nodes || echo "Failed to get nodes"
                             
                             echo "Updating deployment files:"
                             sed -i 's|FRONTEND_IMAGE|${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${FRONTEND_REPO_NAME}:${IMAGE_TAG}|' k8s/frontend-deployment.yaml
                             sed -i 's|BACKEND_IMAGE|${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${BACKEND_REPO_NAME}:${IMAGE_TAG}|' k8s/backend-deployment.yaml
                             
                             echo "Applying MongoDB deployment:"
-                            kubectl apply -f k8s/mongodb-deployment.yaml -v=8 || echo "Failed to apply MongoDB deployment"
+                            ${KUBECTL} apply -f k8s/mongodb-deployment.yaml || echo "Failed to apply MongoDB deployment"
                             
                             echo "Applying Backend deployment:"
-                            kubectl apply -f k8s/backend-deployment.yaml -v=8 || echo "Failed to apply Backend deployment"
+                            ${KUBECTL} apply -f k8s/backend-deployment.yaml || echo "Failed to apply Backend deployment"
                             
                             echo "Applying Frontend deployment:"
-                            kubectl apply -f k8s/frontend-deployment.yaml -v=8 || echo "Failed to apply Frontend deployment"
+                            ${KUBECTL} apply -f k8s/frontend-deployment.yaml || echo "Failed to apply Frontend deployment"
                             
                             echo "Applying MongoDB service:"
-                            kubectl apply -f k8s/mongodb-service.yaml -v=8 || echo "Failed to apply MongoDB service"
+                            ${KUBECTL} apply -f k8s/mongodb-service.yaml || echo "Failed to apply MongoDB service"
                             
                             echo "Applying Backend service:"
-                            kubectl apply -f k8s/backend-service.yaml -v=8 || echo "Failed to apply Backend service"
+                            ${KUBECTL} apply -f k8s/backend-service.yaml || echo "Failed to apply Backend service"
                             
                             echo "Applying Frontend service:"
-                            kubectl apply -f k8s/frontend-service.yaml -v=8 || echo "Failed to apply Frontend service"
+                            ${KUBECTL} apply -f k8s/frontend-service.yaml || echo "Failed to apply Frontend service"
                             
                             echo "Deployment completed"
                         '''
                     }
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    sh '''
+                        echo "Checking deployments:"
+                        ${KUBECTL} get deployments
+                        
+                        echo "Checking services:"
+                        ${KUBECTL} get services
+                        
+                        echo "Checking pods:"
+                        ${KUBECTL} get pods
+                        
+                        echo "Describing services for external IPs:"
+                        ${KUBECTL} describe services frontend-service
+                    '''
                 }
             }
         }
@@ -114,9 +135,15 @@ pipeline {
         always {
             echo 'Printing kubectl config and AWS CLI config for debugging'
             sh '''
-                kubectl config view --raw
+                ${KUBECTL} config view --raw
                 aws configure list
             '''
+        }
+        success {
+            echo 'Deployment successful! Your application should now be accessible.'
+        }
+        failure {
+            echo 'Deployment failed. Please check the logs for more information.'
         }
     }
 }
