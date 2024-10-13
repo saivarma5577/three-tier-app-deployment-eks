@@ -43,18 +43,20 @@ pipeline {
         }
         
         stage('Deploy to EKS') {
-            steps {
-                script {
-                    sh "sed -i 's|FRONTEND_IMAGE|${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${FRONTEND_REPO_NAME}:${IMAGE_TAG}|' k8s/frontend-deployment.yaml"
-                    sh "sed -i 's|BACKEND_IMAGE|${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${BACKEND_REPO_NAME}:${IMAGE_TAG}|' k8s/backend-deployment.yaml"
-                    sh "kubectl apply -f k8s/mongodb-deployment.yaml"
-                    sh "kubectl apply -f k8s/backend-deployment.yaml"
-                    sh "kubectl apply -f k8s/frontend-deployment.yaml"
-                    sh "kubectl apply -f k8s/mongodb-service.yaml"
-                    sh "kubectl apply -f k8s/backend-service.yaml"
-                    sh "kubectl apply -f k8s/frontend-service.yaml"
-                }
-            }
-        }
+               steps {
+                   withCredentials([aws(credentialsId: 'AWS_CREDS', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                       script {
+                           sh "aws eks --region ${AWS_DEFAULT_REGION} update-kubeconfig --name my-cluster"
+                           sh "sed -i 's|FRONTEND_IMAGE|${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${FRONTEND_REPO_NAME}:${IMAGE_TAG}|' k8s/frontend-deployment.yaml"
+                           sh "sed -i 's|BACKEND_IMAGE|${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${BACKEND_REPO_NAME}:${IMAGE_TAG}|' k8s/backend-deployment.yaml"
+                           sh "kubectl apply -f k8s/mongodb-deployment.yaml"
+                           sh "kubectl apply -f k8s/backend-deployment.yaml"
+                           sh "kubectl apply -f k8s/frontend-deployment.yaml"
+                           sh "kubectl apply -f k8s/mongodb-service.yaml"
+                           sh "kubectl apply -f k8s/backend-service.yaml"
+                           sh "kubectl apply -f k8s/frontend-service.yaml"
+                       }
+                   }
+               }
     }
 }
