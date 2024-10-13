@@ -26,35 +26,36 @@ pipeline {
             steps {
                 script {
                     withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
-                        sh """
-                        # Get the current node group name
-                        NODE_GROUP=\$(aws eks list-nodegroups --cluster-name ${CLUSTER_NAME} --query 'nodegroups[0]' --output text)
+                        try {
+                            sh """
+                            # Get the current node group name
+                            NODE_GROUP=\$(aws eks list-nodegroups --cluster-name ${CLUSTER_NAME} --query 'nodegroups[0]' --output text)
 
-                        # Update existing node group
-                        aws eks update-nodegroup-config --cluster-name ${CLUSTER_NAME} \
-                            --nodegroup-name \$NODE_GROUP \
-                            --scaling-config minSize=2,maxSize=3,desiredSize=2
+                            # Update existing node group
+                            aws eks update-nodegroup-config --cluster-name ${CLUSTER_NAME} \
+                                --nodegroup-name \$NODE_GROUP \
+                                --scaling-config minSize=2,maxSize=3,desiredSize=2
 
-                        # Wait for the node group update to complete
-                        aws eks wait nodegroup-active --cluster-name ${CLUSTER_NAME} --nodegroup-name \$NODE_GROUP
+                            # Wait for the node group update to complete
+                            aws eks wait nodegroup-active --cluster-name ${CLUSTER_NAME} --nodegroup-name \$NODE_GROUP
 
-                        # Cordon and drain old nodes
-                        OLD_NODES=\$(kubectl --kubeconfig=${KUBECONFIG} get nodes -o jsonpath='{.items[*].metadata.name}')
-                        for NODE in \$OLD_NODES
-                        do
-                            kubectl --kubeconfig=${KUBECONFIG} cordon \$NODE
-                            kubectl --kubeconfig=${KUBECONFIG} drain \$NODE --ignore-daemonsets --delete-emptydir-data --force --timeout=60s
-                        done
+                            # Cordon and drain old nodes
+                            OLD_NODES=\$(kubectl --kubeconfig=${KUBECONFIG} get nodes -o jsonpath='{.items[*].metadata.name}')
+                            for NODE in \$OLD_NODES
+                            do
+                                kubectl --kubeconfig=${KUBECONFIG} cordon \$NODE
+                                kubectl --kubeconfig=${KUBECONFIG} drain \$NODE --ignore-daemonsets --delete-emptydir-data --force --timeout=300s --grace-period=60 --skip-wait-for-delete-timeout=60s --namespace=default
+                            done
 
-                        # Delete old nodes
-                        for NODE in \$OLD_NODES
-                        do
-                            kubectl --kubeconfig=${KUBECONFIG} delete node \$NODE
-                        done
+                            # Wait for new nodes to be ready
+                            kubectl --kubeconfig=${KUBECONFIG} wait --for=condition=Ready nodes --all --timeout=300s
 
-                        # Verify new nodes
-                        kubectl --kubeconfig=${KUBECONFIG} get nodes
-                        """
+                            # Verify new nodes
+                            kubectl --kubeconfig=${KUBECONFIG} get nodes
+                            """
+                        } catch (Exception e) {
+                            echo "Node group update failed, but continuing: ${e.getMessage()}"
+                        }
                     }
                 }
             }
@@ -119,6 +120,22 @@ pipeline {
                         # Force new deployments
                         kubectl --kubeconfig=${KUBECONFIG} rollout restart deployment backend
                         kubectl --kubeconfig=${KUBECONFIG} rollout restart deployment frontend
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Uncordon Nodes') {
+            steps {
+                script {
+                    withAWS(credentials: 'aws-credentials', region: AWS_DEFAULT_REGION) {
+                        sh """
+                        NODES=\$(kubectl --kubeconfig=${KUBECONFIG} get nodes -o jsonpath='{.items[*].metadata.name}')
+                        for NODE in \$NODES
+                        do
+                            kubectl --kubeconfig=${KUBECONFIG} uncordon \$NODE
+                        done
                         """
                     }
                 }
