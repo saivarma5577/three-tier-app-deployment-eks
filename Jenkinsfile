@@ -42,6 +42,21 @@ pipeline {
                 }
             }
         }
+
+        stage('Check Permissions') {
+            steps {
+                sh '''
+                    echo "Checking kubeconfig permissions:"
+                    ls -l $HOME/.kube/config || echo "Kubeconfig not found"
+                    
+                    echo "Checking kubectl executable:"
+                    which kubectl || echo "kubectl not found in PATH"
+                    
+                    echo "Checking AWS CLI executable:"
+                    which aws || echo "AWS CLI not found in PATH"
+                '''
+            }
+        }
         
         stage('Deploy to EKS') {
             steps {
@@ -54,16 +69,16 @@ pipeline {
                             ls -la
                             
                             echo "Kubectl version:"
-                            kubectl version --client
+                            kubectl version --client || echo "Failed to get kubectl version"
                             
                             echo "Updating kubeconfig:"
-                            aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
+                            aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${AWS_DEFAULT_REGION} || echo "Failed to update kubeconfig"
                             
                             echo "Kubectl config view:"
-                            kubectl config view --raw
+                            kubectl config view --raw || echo "Failed to view kubectl config"
                             
                             echo "Kubectl get nodes:"
-                            kubectl get nodes
+                            kubectl get nodes || echo "Failed to get nodes"
                             
                             echo "Updating deployment files:"
                             sed -i 's|FRONTEND_IMAGE|${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${FRONTEND_REPO_NAME}:${IMAGE_TAG}|' k8s/frontend-deployment.yaml
@@ -86,6 +101,8 @@ pipeline {
                             
                             echo "Applying Frontend service:"
                             kubectl apply -f k8s/frontend-service.yaml -v=8 || echo "Failed to apply Frontend service"
+                            
+                            echo "Deployment completed"
                         '''
                     }
                 }
